@@ -39,7 +39,12 @@ static const int AVNET_IOT_DEFAULT_POLL_PERIOD_SECONDS = 15; // Wait for 15 seco
 static void MonitorAvnetConnectionHandler(EventLoopTimer *timer);
 static void AvnetSendHelloTelemetry(void);
 static IOTHUBMESSAGE_DISPOSITION_RESULT ReceiveMessageCallback(IOTHUB_MESSAGE_HANDLE, void *);
-static const char *ErrorCodeToString(int iotConnectErrorCode);
+//static const char *ErrorCodeToString(int iotConnectErrorCode);
+static bool SyncStore(JSON_Object *dProperties);
+static void SetDeviceCallback(IOTConnectCallback);
+static void IoTCdeviceallinfo(unsigned int);
+static void SendAck(char *Ack_Data, char *Ack_time, int messageType);// Object  - will send the command ACK from D2C
+static void DeviceCallback(char *payload);
 
 static DX_TIMER_BINDING monitorAvnetConnectionTimer = {.name = "monitorAvnetConnectionTimer", .handler = MonitorAvnetConnectionHandler};
 
@@ -59,7 +64,6 @@ static void AvnetReconnectCallback(bool connected) {
     dx_timerChange(&monitorAvnetConnectionTimer, &(struct timespec){.tv_sec = AVNET_IOT_DEFAULT_POLL_PERIOD_SECONDS, .tv_nsec = 0});
 }
 
-
 // Call from the main init function to setup periodic timer and handler
 void dx_avnetConnect(DX_USER_CONFIG *userConfig, const char *networkInterface)
 {
@@ -73,7 +77,7 @@ void dx_avnetConnect(DX_USER_CONFIG *userConfig, const char *networkInterface)
     dx_azureRegisterConnectionChangedNotification(AvnetReconnectCallback);
     dx_azureRegisterMessageReceivedNotification(ReceiveMessageCallback);
 
-    setdevicecallback(DeviceCallback);
+    SetDeviceCallback(DeviceCallback);
     
     dx_azureConnect(userConfig, networkInterface, NULL);
 }
@@ -169,7 +173,8 @@ static IOTHUBMESSAGE_DISPOSITION_RESULT ReceiveMessageCallback(IOTHUB_MESSAGE_HA
     // Using the rootMessage pointer get a pointer to the rootObject
     JSON_Object *rootObject = json_value_get_object(rootMessage);
 
- if (json_object_has_value(rootObject, "cmdType") != 0)
+    // Check to see if this is a command message
+    if (json_object_has_value(rootObject, "cmdType") != 0)
     {
         char cmd_value[10]={0};
         //char dt[10] = {0};
@@ -229,58 +234,22 @@ static IOTHUBMESSAGE_DISPOSITION_RESULT ReceiveMessageCallback(IOTHUB_MESSAGE_HA
                  Log_Debug("WARNING: got the 'cmdType' '0x17' for ('df') Data Frequency update \n");
                 if(data_obj1!= NULL)
                 {
-                    if (json_object_has_value(data_obj1, "df") != 0)
+                    if (json_object_has_value(data_obj1, "df") >= 0)
 	                 {
-     	                df_no = (uint8_t)json_object_get_number(data_obj1, "df");//, ACK_LEN);
-                         Log_Debug("data:df_no: %d\n", df_no);
-		            if(df_no > 0)
-		                {
-
-                            // Update mutable storage with the new timer period so we can 
-                            // read it on the next power cycle.
-//                            WriteToMutableFile(df_no);
-
-			                // Define a new timespec variable for the timer and change the timer period
-//			                struct timespec newPeriod = { .tv_sec = df_no,.tv_nsec = 0 };
-			                //SetEventLoopTimerPeriod(telemetrytxIntervalr, &newPeriod);
-                            Log_Debug("Set the telemetry timer interval here\n");
-                            //SendTelemetryTimerEventHandler(timer->newPeriod);
-
-		                }
-		            else if(df_no == 0)
-		                {
-
-			                // If the new period is zero, then stop the timer
-                            Log_Debug("Received invalid device update 2 for key \n");
-			                //DisarmEventLoopTimer(&newPeriod);
-    
-		                }
-		            else
-		                {
-			            // The data is out of range, return without updating anything
-
-			            //Log_Debug("Received invalid device update for key %s.\n", localTwinPtr->twinKey);
-			            Log_Debug("Received invalid device update for key \n");
-                        }
-                     }
-            
-           }
-
-
-                 /*$if(data_obj1!= NULL){
-                 if (json_object_has_value(data_obj1, "df") != 0) 
-                    {
-                        //unsigned char df_no;
-                       // char df_no[64+1];
-                        df_no = (uint8_t)json_object_get_number(data_obj1, "df");//, ACK_LEN);
+     	                df_no = (uint8_t)json_object_get_number(data_obj1, "df");
                         Log_Debug("data:df_no: %d\n", df_no);
-                        
-            
-                    }
-                 }*/
-                 //calling_type(201);
-                 //IoTCdeviceallinfo(201);
-                 break;
+
+                        // Update the data frequency data item, the timer handler that sends 
+                        // telemetry should poll to see if this data changes and if so, use the
+                        // new value.  If the value is zero, then the timer handler should not
+                        // send any telemetry data to IoTConnect
+                        syncInfo.df = df_no;
+
+		            }
+                    // else df < 0, don't do anything
+                }
+
+                break;
             
             case 0x11:
                  Log_Debug("WARNING: got the 'cmdType' '0x11' for Device message \n");
@@ -300,10 +269,9 @@ static IOTHUBMESSAGE_DISPOSITION_RESULT ReceiveMessageCallback(IOTHUB_MESSAGE_HA
                 JSON_Value *DISP_C = json_value_init_object();
                 JSON_Object *DISP_obj_C = json_value_get_object(DISP_C);
         
-		        
-		        json_object_dotset_string(DISP_obj_C, "sid", SYNC_INFO.sid); 
-		        //json_object_dotset_number(DISP_obj_C, "uniqueid",SYNC_INFO.uniqueId);
-	            json_object_dotset_string(DISP_obj_C, "guid", SYNC_INFO.gGUID );
+		        json_object_dotset_string(DISP_obj_C, "sid", syncInfo.sid); 
+		        //json_object_dotset_number(DISP_obj_C, "uniqueid",syncInfo.uniqueId);
+	            json_object_dotset_string(DISP_obj_C, "guid", syncInfo.gGUID );
                 json_object_dotset_boolean(DISP_obj_C, "ack", false );
                 json_object_dotset_string(DISP_obj_C, "ackId", "");
                 json_object_dotset_boolean(DISP_obj_C, "command",false );
@@ -336,24 +304,24 @@ static IOTHUBMESSAGE_DISPOSITION_RESULT ReceiveMessageCallback(IOTHUB_MESSAGE_HA
             unsigned char ec = (unsigned char)json_object_get_number(dProperties, "ec");
             if (json_object_has_value(dProperties, "ct") != 0) 
             {
-                SYNC_INFO.command_type=(unsigned char)json_object_get_number(dProperties, "ct");
-                Log_Debug("command Type: %d\n", SYNC_INFO.command_type);
+                syncInfo.commandType=(unsigned char)json_object_get_number(dProperties, "ct");
+                Log_Debug("command Type: %d\n", syncInfo.commandType);
             }
             switch (ec)
             {
                 case 0:
-                    switch (SYNC_INFO.command_type)
+                    switch (syncInfo.commandType)
                     {
                         case 200:
                             //store sync call
                             // pull dtg and sid
-                            dtgFlag = sync_store(dProperties);
-                            if(strnlen(SYNC_INFO.sid, DX_AVNET_IOT_CONNECT_SID_LEN) == DX_AVNET_IOT_CONNECT_SID_LEN){
+                            dtgFlag = SyncStore(dProperties);
+                            if(strnlen(syncInfo.sid, DX_AVNET_IOT_CONNECT_SID_LEN) == DX_AVNET_IOT_CONNECT_SID_LEN){
                                 IoTCdeviceallinfo(210);
                             }
                             break;
                         case 210:
-                            dtgFlag = sync_store(dProperties);
+                            dtgFlag = SyncStore(dProperties);
                             break;
                         case 204:
                             // store sync call
@@ -590,39 +558,41 @@ bool dx_isAvnetConnected(void)
     return avnetConnected;
 }
 
+/*
 static const char *ErrorCodeToString(int iotConnectErrorCode)
 {
     switch (iotConnectErrorCode) {
 
-    case AVT_ERROR_CODE_OK:
+    case AVT_errorCode_OK:
         return "OK";
-    case AVT_ERROR_CODE_DEV_NOT_REGISTERED:
+    case AVT_errorCode_DEV_NOT_REGISTERED:
         return "device not registered";
-    case AVT_ERROR_CODE_DEV_AUTO_REGISTERED:
+    case AVT_errorCode_DEV_AUTO_REGISTERED:
         return "Device auto registered";
-    case AVT_ERROR_CODE_DEV_NOT_FOUND:
+    case AVT_errorCode_DEV_NOT_FOUND:
         return "device not Found";
-    case AVT_ERROR_CODE_DEV_INACTIVE:
+    case AVT_errorCode_DEV_INACTIVE:
         return "Inactive device";
-    case AVT_ERROR_CODE_OBJ_MOVED:
+    case AVT_errorCode_OBJ_MOVED:
         return "object moved";
-    case AVT_ERROR_CODE_CPID_NOT_FOUND:
+    case AVT_errorCode_CPID_NOT_FOUND:
         return "CPID not found";
-    case AVT_ERROR_CODE_COMPANY_NOT_FOUND:
+    case AVT_errorCode_COMPANY_NOT_FOUND:
         return "Company not found";
     default:
         return "Unknown error code";
     }
 }
+*/
 
-bool sync_store(JSON_Object *dProperties)
+static bool SyncStore(JSON_Object *dProperties)
 {
     bool dtgFlag = false;
     if (json_object_has_value(dProperties, "sid") != 0) 
     {
-        strncpy(SYNC_INFO.sid, (char *)json_object_get_string(dProperties, "sid"), DX_AVNET_IOT_CONNECT_SID_LEN);
-        strncpy(sidString,SYNC_INFO.sid,DX_AVNET_IOT_CONNECT_SID_LEN);
-        Log_Debug("sid: %s\n", SYNC_INFO.sid);
+        strncpy(syncInfo.sid, (char *)json_object_get_string(dProperties, "sid"), DX_AVNET_IOT_CONNECT_SID_LEN);
+        strncpy(sidString,syncInfo.sid,DX_AVNET_IOT_CONNECT_SID_LEN);
+        Log_Debug("sid: %s\n", syncInfo.sid);
     }
     
         // Check to see if the object contains a "meta" object 200 resp
@@ -636,26 +606,26 @@ bool sync_store(JSON_Object *dProperties)
         // The meta properties should have a "dtg" key
         if (json_object_has_value(metaProperties, "dtg") != 0) 
         {
-            strncpy(SYNC_INFO.dtg, (char *)json_object_get_string(metaProperties, "dtg"), DX_AVNET_IOT_CONNECT_GUID_LEN);
-            Log_Debug("meta:dtg: %s\n", SYNC_INFO.dtg);
-            strncpy(dtgGUID,SYNC_INFO.dtg, DX_AVNET_IOT_CONNECT_GUID_LEN);
+            strncpy(syncInfo.dtg, (char *)json_object_get_string(metaProperties, "dtg"), DX_AVNET_IOT_CONNECT_GUID_LEN);
+            Log_Debug("meta:dtg: %s\n", syncInfo.dtg);
+            strncpy(dtgGUID,syncInfo.dtg, DX_AVNET_IOT_CONNECT_GUID_LEN);
             
             dtgFlag = true;
         }
         if (json_object_has_value(metaProperties, "g") != 0) 
         {
-            strncpy(SYNC_INFO.gGUID, (char *)json_object_get_string(metaProperties, "g"), DX_AVNET_IOT_CONNECT_GUID_LEN);
-            Log_Debug("meta:g: %s\n", SYNC_INFO.gGUID);
+            strncpy(syncInfo.gGUID, (char *)json_object_get_string(metaProperties, "g"), DX_AVNET_IOT_CONNECT_GUID_LEN);
+            Log_Debug("meta:g: %s\n", syncInfo.gGUID);
         }
         if (json_object_has_value(metaProperties, "edge") != 0) 
         {
-            SYNC_INFO.edge = (uint8_t)json_object_get_number(metaProperties, "edge");
-            Log_Debug("meta:edge: %d\n", SYNC_INFO.edge);
+            syncInfo.edge = (uint8_t)json_object_get_number(metaProperties, "edge");
+            Log_Debug("meta:edge: %d\n", syncInfo.edge);
         }
         if (json_object_has_value(metaProperties, "df") != 0) 
         {
-            SYNC_INFO.Df= (uint16_t)json_object_get_number(metaProperties, "df");
-            Log_Debug("meta:Df: %d\n", SYNC_INFO.Df);
+            syncInfo.df= (uint16_t)json_object_get_number(metaProperties, "df");
+            Log_Debug("meta:df: %d\n", syncInfo.df);
         }
     }
     JSON_Object *childProperties = json_object_dotget_object(dProperties, "d");
@@ -679,23 +649,23 @@ bool sync_store(JSON_Object *dProperties)
         
         if (json_object_has_value(hasProperties, "d") != 0) 
         {
-            SYNC_INFO.has_child = (uint8_t)json_object_get_number(hasProperties, "d");
-            Log_Debug("has:child: %d\n", SYNC_INFO.has_child);
+            syncInfo.hasChild = (uint8_t)json_object_get_number(hasProperties, "d");
+            Log_Debug("has:child: %d\n", syncInfo.hasChild);
         } 
         if (json_object_has_value(hasProperties, "attr") != 0) 
         {
-            SYNC_INFO.has_attr = (uint8_t)json_object_get_number(hasProperties, "attr");
-            Log_Debug("has:attr: %d\n", SYNC_INFO.has_attr);
+            syncInfo.hasAttr = (uint8_t)json_object_get_number(hasProperties, "attr");
+            Log_Debug("has:attr: %d\n", syncInfo.hasAttr);
         } 
         if (json_object_has_value(hasProperties, "set") != 0) 
         {
-                SYNC_INFO.has_set = (uint8_t)json_object_get_number(hasProperties, "set");
-                Log_Debug("has:set: %d\n", SYNC_INFO.has_set);
+                syncInfo.hasSet = (uint8_t)json_object_get_number(hasProperties, "set");
+                Log_Debug("has:set: %d\n", syncInfo.hasSet);
         } 
         if (json_object_has_value(hasProperties, "r") != 0) 
         {
-            SYNC_INFO.has_rule = (uint8_t)json_object_get_number(hasProperties, "r");
-            Log_Debug("has:r %d\n", SYNC_INFO.has_rule);
+            syncInfo.hasRule = (uint8_t)json_object_get_number(hasProperties, "r");
+            Log_Debug("has:r %d\n", syncInfo.hasRule);
         }
     }
     return dtgFlag;
@@ -710,7 +680,7 @@ static void IoTCdeviceallinfo(unsigned int CT)
 
     json_object_dotset_number(rootObject, "mt", CT);
     json_object_dotset_number(rootObject, "v", IOT_CONNECT_API_VERSION);
-    json_object_dotset_string(rootObject,"sid",SYNC_INFO.sid);//"NWVlMzRhYmRmZDhlNGRmODg0N2Q2Y2Q4ZTBkZDY2NDU=UDI6MTQ6MDMuMDA="
+    json_object_dotset_string(rootObject,"sid",syncInfo.sid);//"NWVlMzRhYmRmZDhlNGRmODg0N2Q2Y2Q4ZTBkZDY2NDU=UDI6MTQ6MDMuMDA="
 
     char *serializedTelemetryUpload = json_serialize_to_string(rootValue);
 
@@ -730,7 +700,7 @@ static void IoTCdeviceallinfo(unsigned int CT)
  // 		- @msgType - ACK for OTA or device Command
  // return - None
  
-void SendAck(char *Ack_Data, char *Ack_time, int msgType)
+static void SendAck(char *Ack_Data, char *Ack_time, int msgType)
 {
     JSON_Value *ACK = json_value_init_object();
     JSON_Object *Ack_obj = json_value_get_object(ACK);
@@ -739,43 +709,29 @@ void SendAck(char *Ack_Data, char *Ack_time, int msgType)
     
 	if(Ack_json == NULL)
     {
-		Log_Debug("ERR_CM03 [ %s - %s ] : Invalid data type to send the acknowledgment. It should be in 'object' type\r\n", SYNC_INFO.sid, SYNC_INFO.dtg);	
+		Log_Debug("ERR_CM03 [ %s - %s ] : Invalid data type to send the acknowledgment. It should be in 'object' type\r\n", syncInfo.sid, syncInfo.dtg);	
 		return ;
 	}
     else
     {
         json_object_dotset_string(Ack_obj, "sid", sidString);
-		//cJSON_AddStringToObject(Ack_json, "uniqueId", IC_UNIQUEID);
 		json_object_dotset_number(Ack_obj, "mt", msgType);
 		json_object_dotset_string(Ack_obj, "dt", Ack_time);
 		json_object_set_value(Ack_obj, "d", Ack_json);
 		
         char *serializedTelemetryUpload = json_serialize_to_string(ACK);
-
         if (!dx_azurePublish(serializedTelemetryUpload, strnlen(serializedTelemetryUpload, 256), NULL, 0, NULL)) {
 
             Log_Debug("WARNING: Could not send telemetry to cloud\n");
         }
 
-//        char *Ack_Json_Data = json_serialize_to_string(ACK);
-
         Log_Debug("send ACK message: %s\n",serializedTelemetryUpload);
         
-//        AzureIoT_Result aziotResult = AzureIoT_SendTelemetry(Ack_Json_Data, NULL);
-//        result = AzureIoTToCloudResult(aziotResult);
-//        if (result != Cloud_Result_OK) 
-//        {
-//            Log_Debug("WARNING: Could not send telemetry to cloud: %s\n", CloudResultToString(result));
-        
-            // Output the telemetry Json structure as debuh
-//            Ack_Json_Data = json_serialize_to_string_pretty(ACK); // leaf_value
-//            Log_Debug("%s\n", Ack_Json_Data);
-//        }
     }
 
 }
 
-void DeviceCallback(char *payload)
+static void DeviceCallback(char *payload)
 {
    Log_Debug("payload: %s\n",payload);
     int Status = 0; 
@@ -801,14 +757,14 @@ void DeviceCallback(char *payload)
     if (json_object_has_value(rootObj, "ackId") != 0) 
     {
     
-        strncpy(ackid, (char *)json_object_get_string(rootObj, "ackId"), ACK_LEN);
+        strncpy(ackid, (char *)json_object_get_string(rootObj, "ackId"), DX_AVNET_IOT_CONNECT);
         Log_Debug("data:ackid: %s\n", ackid);
         
     }
     if (json_object_has_value(rootObj, "cmdType") != 0) 
     {
     
-        strncpy(cmdvalue, (char *)json_object_get_string(rootObj, "cmdType"), ACK_LEN);
+        strncpy(cmdvalue, (char *)json_object_get_string(rootObj, "cmdType"), DX_AVNET_IOT_CONNECT);
         Log_Debug("data:cmdtype: %s\n", cmdvalue);
         
     }
@@ -846,8 +802,23 @@ void DeviceCallback(char *payload)
     SendAck(Ack_Json_Data_C,AckTime,msgType);
 }
 
-void setdevicecallback(IOTConnectCallback callback)
+static void SetDeviceCallback(IOTConnectCallback callback)
 {
    devicecallback = callback;
   
 }
+
+/// <summary>
+/// This routine returns the frequency value from IoTConnect  
+/// </summary>
+/// <returns></returns>
+int dx_avnetGetTelemetryPeriod(void){
+
+    if(dx_isAvnetConnected()){
+        return syncInfo.df;
+    }
+    else{
+        return -1;
+    }
+}
+

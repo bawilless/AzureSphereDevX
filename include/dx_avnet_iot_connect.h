@@ -39,33 +39,56 @@ SOFTWARE.
 #include "dx_config.h"
 
 #define DX_AVNET_IOT_CONNECT_GUID_LEN 36
-#define DX_AVNET_IOT_CONNECT_SID_LEN 64
+#define DX_AVNET_IOT_CONNECT_CPID_LEN 64
 #define DX_AVNET_IOT_CONNECT_DTG_LEN 64
+#define DX_AVNET_IOT_CONNECT_CMD_LEN 64
+#define DX_AVNET_IOT_CONNECT_ACK_LEN 64
+#define DX_AVNET_IOT_CONNECT_SID_LEN 256
 #define DX_AVNET_IOT_CONNECT_METADATA 256
 #define DX_AVNET_IOT_CONNECT_JSON_BUFFER_SIZE 512
-#define ACK_LEN 64
+#define DX_AVNET_IOT_CONNECT 64
+#define DX_AVNET_IOT_CONNECT_ENABLE_DEBUG 
 
 #define IOT_CONNECT_API_VERSION 2.0F
 typedef enum
 {
-	AVT_ERROR_CODE_OK = 0,
-	AVT_ERROR_CODE_DEV_NOT_REGISTERED = 1,
-    AVT_ERROR_CODE_DEV_AUTO_REGISTERED = 2,
-    AVT_ERROR_CODE_DEV_NOT_FOUND = 3,
-    AVT_ERROR_CODE_DEV_INACTIVE = 4,
-    AVT_ERROR_CODE_OBJ_MOVED = 5,
-    AVT_ERROR_CODE_CPID_NOT_FOUND = 6,
-    AVT_ERROR_CODE_COMPANY_NOT_FOUND = 7
-} AVT_IOTC_ERROR_CODES;
+	AVT_errorCode_OK = 0,
+	AVT_errorCode_DEV_NOT_REGISTERED = 1,
+    AVT_errorCode_DEV_AUTO_REGISTERED = 2,
+    AVT_errorCode_DEV_NOT_FOUND = 3,
+    AVT_errorCode_DEV_INACTIVE = 4,
+    AVT_errorCode_OBJ_MOVED = 5,
+    AVT_errorCode_CPID_NOT_FOUND = 6,
+    AVT_errorCode_COMPANY_NOT_FOUND = 7
+} AVT_IOTC_errorCodes;
 
-struct Syncresp
+// Data structure to hold IoTConnect response message data
+struct SyncResp_t
 {
-    char sid[64 + 1],*cpid,dtg[DX_AVNET_IOT_CONNECT_GUID_LEN + 1],gGUID[DX_AVNET_IOT_CONNECT_GUID_LEN + 1],ackid[ACK_LEN + 1],cpidt[64+1],uniqueId[64+1],command[64+1],ack[64+1];
-    unsigned char edge,has_child,has_attr,has_set,has_rule,has_ota,error_code,command_type;
-    unsigned short int Df;
+    char sid[DX_AVNET_IOT_CONNECT_SID_LEN + 1];
+    char*cpid;
+    char dtg[DX_AVNET_IOT_CONNECT_GUID_LEN + 1];
+    char gGUID[DX_AVNET_IOT_CONNECT_GUID_LEN + 1];
+    char ackid[DX_AVNET_IOT_CONNECT + 1];
+    char cpidt[DX_AVNET_IOT_CONNECT_CPID_LEN+1];
+    char uniqueId[DX_AVNET_IOT_CONNECT_SID_LEN+1];
+    char command[DX_AVNET_IOT_CONNECT_CMD_LEN+1];
+    char ack[DX_AVNET_IOT_CONNECT_ACK_LEN+1];
+    unsigned char edge;
+    unsigned char hasChild;
+    unsigned char hasAttr;
+    unsigned char hasSet;
+    unsigned char hasRule;
+    unsigned char hasOta; 
+    unsigned char errorCode;
+    unsigned char commandType;
+    unsigned short int df;
+};
 
-}SYNC_INFO;
+// Define a structure to hold all the IoTConnect response data
+struct SyncResp_t syncInfo;
 
+// Define the callback signature
 typedef void (*IOTConnectCallback) (char *);
 
 /// <summary>
@@ -103,9 +126,8 @@ void dx_avnetConnect(DX_USER_CONFIG *userConfig, const char *networkInterface);
 /// <returns></returns>
 bool dx_isAvnetConnected(void);
 
-bool sync_store(JSON_Object *dProperties);
-void setdevicecallback(IOTConnectCallback);
-static void IoTCdeviceallinfo(unsigned int);
-extern void SendAck(char *Ack_Data, char *Ack_time, int messageType);// Object  - will send the command ACK from D2C
-void DeviceCallback(char *payload);
-void setdevicecallback(IOTConnectCallback callback);
+/// <summary>
+/// This routine returns the frequency value from IoTConnect  
+/// </summary>
+/// <returns></returns>
+int dx_avnetGetTelemetryPeriod(void);
