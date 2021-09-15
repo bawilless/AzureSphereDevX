@@ -10,39 +10,41 @@
 
 typedef enum {
 	DX_TYPE_UNKNOWN = 0,
-	DX_TYPE_BOOL = 1,
-	DX_TYPE_FLOAT = 2,
-	DX_TYPE_DOUBLE = 3,
-	DX_TYPE_INT = 4,
-	DX_TYPE_STRING = 5
+	DX_DEVICE_TWIN_BOOL = 1,
+	DX_DEVICE_TWIN_FLOAT = 2,
+	DX_DEVICE_TWIN_DOUBLE = 3,
+	DX_DEVICE_TWIN_INT = 4,
+	DX_DEVICE_TWIN_STRING = 5
 } DX_DEVICE_TWIN_TYPE;
 
 typedef struct _deviceTwinBinding {
-	const char* twinProperty;
-	void* twinState;
-	int twinVersion;
-	bool twinStateUpdated;
+	const char* propertyName;
+	void* propertyValue;
+	int propertyVersion;
+	bool propertyUpdated;
 	DX_DEVICE_TWIN_TYPE twinType;
 	void (*handler)(struct _deviceTwinBinding* deviceTwinBinding);
+	void *context;
 } DX_DEVICE_TWIN_BINDING;
 
 typedef enum
 {
-	DX_DEVICE_TWIN_COMPLETED = 200,
-	DX_DEVICE_TWIN_ERROR = 500,
-	DX_DEVICE_TWIN_INVALID = 404
+	DX_DEVICE_TWIN_RESPONSE_COMPLETED = 200,
+	DX_DEVICE_TWIN_RESPONSE_ERROR = 500,
+	DX_DEVICE_TWIN_REPONSE_INVALID = 404
 } DX_DEVICE_TWIN_RESPONSE_CODE;
 
 //typedef struct _deviceTwinBinding DX_DEVICE_TWIN_BINDING;
 
 /// <summary>
-/// Acknowledge receipt of a device twin message with new state and status code.
+/// IoT Plug and Play acknowledge receipt of a device twin message with new state and status code.
 /// </summary>
 /// <param name="deviceTwinBinding"></param>
 /// <param name="state"></param>
 /// <param name="statusCode"></param>
 /// <returns></returns>
-bool dx_deviceTwinAckDesiredState(DX_DEVICE_TWIN_BINDING* deviceTwinBinding, void* state, DX_DEVICE_TWIN_RESPONSE_CODE statusCode);
+bool dx_deviceTwinAckDesiredValue(DX_DEVICE_TWIN_BINDING* deviceTwinBinding, void* state, DX_DEVICE_TWIN_RESPONSE_CODE statusCode);
+
 
 /// <summary>
 /// Update device twin state.
@@ -50,7 +52,7 @@ bool dx_deviceTwinAckDesiredState(DX_DEVICE_TWIN_BINDING* deviceTwinBinding, voi
 /// <param name="deviceTwinBinding"></param>
 /// <param name="state"></param>
 /// <returns></returns>
-bool dx_deviceTwinReportState(DX_DEVICE_TWIN_BINDING* deviceTwinBinding, void* state);
+bool dx_deviceTwinReportValue(DX_DEVICE_TWIN_BINDING* deviceTwinBinding, void* state);
 
 /// <summary>
 /// Close all device twins, deallocate backing storage for each twin, and stop inbound and outbound device twin updates.
@@ -64,8 +66,3 @@ void dx_deviceTwinUnsubscribe(void);
 /// <param name="deviceTwins"></param>
 /// <param name="deviceTwinCount"></param>
 void dx_deviceTwinSubscribe(DX_DEVICE_TWIN_BINDING* deviceTwins[], size_t deviceTwinCount);
-
-/// <summary>
-/// Callback used by IoT Hub client to process inbound device twin messages.
-/// </summary>
-void dx__deviceTwinCallbackHandler(DEVICE_TWIN_UPDATE_STATE updateState, const unsigned char* payload, size_t payloadSize, void* userContextCallback);

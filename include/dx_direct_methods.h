@@ -13,14 +13,10 @@ typedef enum
 	DX_METHOD_NOT_FOUND = 404
 } DX_DIRECT_METHOD_RESPONSE_CODE;
 
-struct _directMethodBinding {
+typedef struct _directMethodBinding {
 	const char* methodName;
 	DX_DIRECT_METHOD_RESPONSE_CODE(*handler)(JSON_Value* json, struct _directMethodBinding* peripheral, char** responseMsg);
-};
-
-typedef struct _directMethodBinding DX_DIRECT_METHOD_BINDING;
+} DX_DIRECT_METHOD_BINDING;
 
 void dx_directMethodUnsubscribe(void);
 void dx_directMethodSubscribe(DX_DIRECT_METHOD_BINDING* directMethods[], size_t directMethodCount);
-int dx__deviceDirectMethodCallbackHandler(const char* method_name, const unsigned char* payload, size_t payloadSize,
-	unsigned char** responsePayload, size_t* responsePayloadSize, void* userContextCallback);

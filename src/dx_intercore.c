@@ -9,7 +9,7 @@ static EventRegistration *socketEventReg = NULL;
 
 static bool initialise_inter_core_communications(DX_INTERCORE_BINDING *intercore_binding)
 {
-    if (intercore_binding->sockFd != -1) // Already initialised
+    if (intercore_binding->initialized) // Already initialised
     {
         return true;
     }
@@ -27,7 +27,7 @@ static bool initialise_inter_core_communications(DX_INTERCORE_BINDING *intercore
     }
 
     // Set timeout, to handle case where real-time capable application does not respond.
-    static const struct timeval recvTimeout = {.tv_sec = 5, .tv_usec = 0};
+    const struct timeval recvTimeout = {.tv_sec = 5, .tv_usec = 0};
     int result = setsockopt(intercore_binding->sockFd, SOL_SOCKET, SO_RCVTIMEO, &recvTimeout,
                             sizeof(recvTimeout));
     if (result == -1) {
@@ -35,14 +35,17 @@ static bool initialise_inter_core_communications(DX_INTERCORE_BINDING *intercore
         return false;
     }
 
-    // Register handler for incoming messages from real-time capable application.
-    socketEventReg = EventLoop_RegisterIo(dx_timerGetEventLoop(), intercore_binding->sockFd,
-                                          EventLoop_Input, SocketEventHandler, intercore_binding);
-    if (socketEventReg == NULL) {
-        Log_Debug("ERROR: Unable to register socket event: %d (%s)\n", errno, strerror(errno));
-        return false;
+    if (intercore_binding->interCoreCallback != NULL) {
+        // Register handler for incoming messages from real-time capable application.
+        socketEventReg =
+            EventLoop_RegisterIo(dx_timerGetEventLoop(), intercore_binding->sockFd, EventLoop_Input, SocketEventHandler, intercore_binding);
+        if (socketEventReg == NULL) {
+            Log_Debug("ERROR: Unable to register socket event: %d (%s)\n", errno, strerror(errno));
+            return false;
+        }
     }
 
+    intercore_binding->initialized = true;
     return true;
 }
 
@@ -59,8 +62,7 @@ bool dx_intercorePublish(DX_INTERCORE_BINDING *intercore_binding, void *control_
                              size_t message_length)
 {
     if (message_length > 1024) {
-        Log_Debug(
-            "Message too long. Max length is 1022 (1024 minus 2 bytes of control information\n");
+        Log_Debug("Message too long. Max length is 1024\n");
     }
 
     // lazy initialise intercore socket
@@ -72,7 +74,6 @@ bool dx_intercorePublish(DX_INTERCORE_BINDING *intercore_binding, void *control_
     // Returns EAGAIN if socket is full
 
     // send is blocking on socket full
-    // allow 2 extra to the send length for ic msg control and reserve bytes
     int bytesSent = send(intercore_binding->sockFd, control_block, message_length,
                          intercore_binding->nonblocking_io ? MSG_DONTWAIT : 0);
     if (bytesSent == -1) {
@@ -81,6 +82,35 @@ bool dx_intercorePublish(DX_INTERCORE_BINDING *intercore_binding, void *control_
     }
 
     return true;
+}
+
+bool dx_intercorePublishThenReadTimeout(DX_INTERCORE_BINDING *intercore_binding, suseconds_t timeoutInMicroseconds)
+{
+    if (!intercore_binding->initialized) // Not initialised
+    {
+        return false;
+    }
+
+    suseconds_t seconds = timeoutInMicroseconds / 1000000;
+    timeoutInMicroseconds %= 1000000;
+
+    const struct timeval recvTimeout = {.tv_sec = seconds, .tv_usec = timeoutInMicroseconds};
+
+    if (setsockopt(intercore_binding->sockFd, SOL_SOCKET, SO_RCVTIMEO, &recvTimeout, sizeof(recvTimeout)) == -1) {
+        Log_Debug("ERROR: Unable to set socket timeout: %d (%s)\n", errno, strerror(errno));
+        return false;
+    }
+    return true;
+}
+
+ssize_t dx_intercorePublishThenRead(DX_INTERCORE_BINDING *intercore_binding, void *control_block, size_t message_length)
+{
+    if (dx_intercorePublish(intercore_binding, control_block, message_length)) {
+
+        return recv(intercore_binding->sockFd, (void *)intercore_binding->intercore_recv_block,
+                    intercore_binding->intercore_recv_block_length, 0);
+    }
+    return -1;
 }
 
 /// <summary>
@@ -110,7 +140,6 @@ static bool ProcessMsg(DX_INTERCORE_BINDING *intercore_binding)
         return false;
     }
 
-    // minus 2 for bytesReceived for ic msg control and reserve bytes
     intercore_binding->interCoreCallback(intercore_binding->intercore_recv_block, (ssize_t)bytesReceived);
 
     return true;

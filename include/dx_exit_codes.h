@@ -4,9 +4,10 @@
 #pragma once
 
 /// <summary>
-/// Exit codes for this application. These are used for the
-/// application exit code.  They must all be between zero and 255,
-/// where zero is reserved for successful termination.
+/// Exit codes for the DevX library. These are used for the
+/// library exit codes.  They must all be between 150 and 255,
+/// where zero is reserved for successful termination.  Exit
+/// codes 1 - 149 are reserved for application level exit codes.
 /// </summary>
 typedef enum {
 	DX_ExitCode_Success = 0,
@@ -44,6 +45,13 @@ typedef enum {
 	DX_ExitCode_UpdateCallback_DeferEvent = 228,
 	DX_ExitCode_UpdateCallback_FinalUpdate = 227,
 	DX_ExitCode_UpdateCallback_UnexpectedStatus = 226,
-	DX_ExitCode_SetUpSysEvent_RegisterEvent = 225
+	DX_ExitCode_SetUpSysEvent_RegisterEvent = 225,
 
+	DX_ExitCode_Init_IoTCTimer = 220,
+	DX_ExitCode_IoTCTimer_Consume = 219,
+
+	DX_ExitCode_Uart_Open_Failed = 215,
+	DX_ExitCode_Uart_Read_Failed = 214,
+	DX_ExitCode_Uart_Write_Failed = 213,
+	DX_ExitCode_UartHandler = 212
 } ExitCode;

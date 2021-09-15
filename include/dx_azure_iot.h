@@ -14,6 +14,7 @@
 #include "dx_terminate.h"
 #include "dx_timer.h"
 #include "dx_utilities.h"
+#include "dx_avnet_iot_connect.h"
 #include "iothubtransportmqtt.h"
 #include <applibs/log.h>
 #include <azure_prov_client/iothub_security_factory.h>
@@ -35,16 +36,14 @@
 #define IOT_HUB_POLL_TIME_NANOSECONDS 100000000
 #endif
 
-typedef struct DX_MESSAGE_PROPERTY
-{
-	const char* key;
-	const char* value;
+typedef struct DX_MESSAGE_PROPERTY {
+    const char *key;
+    const char *value;
 } DX_MESSAGE_PROPERTY;
 
-typedef struct DX_MESSAGE_CONTENT_PROPERTIES
-{
-	const char* contentEncoding;
-	const char* contentType;
+typedef struct DX_MESSAGE_CONTENT_PROPERTIES {
+    const char *contentEncoding;
+    const char *contentType;
 } DX_MESSAGE_CONTENT_PROPERTIES;
 
 /// <summary>
@@ -63,7 +62,8 @@ bool dx_isAzureConnected(void);
 /// <param name="messagePropertyCount"></param>
 /// <param name="messageContentProperties"></param>
 /// <returns></returns>
-bool dx_azurePublish(const void* message, size_t messageLength, DX_MESSAGE_PROPERTY** messageProperties, size_t messagePropertyCount, DX_MESSAGE_CONTENT_PROPERTIES* messageContentProperties);
+bool dx_azurePublish(const void *message, size_t messageLength, DX_MESSAGE_PROPERTY **messageProperties, size_t messagePropertyCount,
+                     DX_MESSAGE_CONTENT_PROPERTIES *messageContentProperties);
 
 /// <summary>
 /// Exposed for Device Twins. Not for general use.
@@ -74,15 +74,52 @@ IOTHUB_DEVICE_CLIENT_LL_HANDLE dx_azureClientHandleGet(void);
 
 /// <summary>
 /// Initialise Azure IoT Hub/Connection connection, passing in network interface for connecting testing and IoT Plug and Play model id.
-/// Cloud to device messages is also enabled. For information on Plug and Play see https://docs.microsoft.com/en-us/azure/iot-pnp/overview-iot-plug-and-play
+/// Cloud to device messages is also enabled. For information on Plug and Play see
+/// https://docs.microsoft.com/en-us/azure/iot-pnp/overview-iot-plug-and-play
 /// </summary>
 /// <param name="dx_config"></param>
 /// <param name="networkInterface"></param>
 /// <param name="plugAndPlayModelId"></param>
-void dx_azureConnect(DX_USER_CONFIG* userConfig, const char* networkInterface, const char* plugAndPlayModelId);
+void dx_azureConnect(DX_USER_CONFIG *userConfig, const char *networkInterface, const char *plugAndPlayModelId);
 
 /// <summary>
 /// Stop Cloud to device messaging. Device twins and direct method messages will not be recieved or processed.
 /// </summary>
 /// <param name=""></param>
 void dx_azureToDeviceStop(void);
+
+/// <summary>
+/// Register for new message recieved from Azure IoT
+/// </summary>
+/// <param name="messageReceivedCallback"></param>
+void dx_azureRegisterMessageReceivedNotification(IOTHUBMESSAGE_DISPOSITION_RESULT (*messageReceivedCallback)(IOTHUB_MESSAGE_HANDLE message, void *context));
+
+/// <summary>
+/// Register to be notified of change in Azure IoT Connection status
+/// Up to 5 callbacks can be registered
+/// </summary>
+/// <param name="connectionStatusCallback"></param>
+/// <returns></returns>
+bool dx_azureRegisterConnectionChangedNotification(void (*connectionStatusCallback)(bool connected));
+
+/// <summary>
+/// Unregister a callback to be notified of change in Azure IoT Connection status
+/// </summary>
+/// <param name="connectionStatusCallback"></param>
+void dx_azureUnregisterConnectionChangedNotification(void (*connectionStatusCallback)(bool connected));
+
+/// <summary>
+/// Register Device Twin callback to process an Azure IoT device twin message
+/// </summary>
+/// <param name="deviceTwinCallbackHandler"></param>
+void dx_azureRegisterDeviceTwinCallback(void (*deviceTwinCallbackHandler)(DEVICE_TWIN_UPDATE_STATE updateState,
+                                                                          const unsigned char *payload, size_t payloadSize,
+                                                                          void *userContextCallback));
+
+/// <summary>
+/// Register Direct Method callback to process an Azure IoT direct method message
+/// </summary>
+/// <param name="directMethodCallbackHandler"></param>
+void dx_azureRegisterDirectMethodCallback(int (*directMethodCallbackHandler)(const char *method_name, const unsigned char *payload,
+                                                                             size_t payloadSize, unsigned char **responsePayload,
+                                                                             size_t *responsePayloadSize, void *userContextCallback));
